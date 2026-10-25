@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+data
+**/*.sqlite3*
+**/*.log
+.DS_Store
+github-upload
+docs
+tests
