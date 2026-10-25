@@ -1,0 +1,25 @@
+[Unit]
+Description=Daily Telegram pill reminder
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=pillbot
+Group=pillbot
+WorkingDirectory=/opt/pillbot
+ExecStart=/opt/pillbot/.venv/bin/python /opt/pillbot/main.py
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/pillbot/data
+
+[Install]
+WantedBy=multi-user.target
