@@ -20,9 +20,10 @@ class SetupFlow:
         self.store.register(chat_id, message.from_user.id)
         self.store.begin_setup(chat_id)
         await telegram_call(message.answer,
-            text='Когда был первый приём таблеток? 💊\n'
+            text='Когда был первый приём таблеток — самая первая таблетка за весь период? 💊\n'
+                 'Укажи начало первого цикла, даже если сейчас идёт уже второй или третий.\n'
                  'Напиши дату в формате ДД.ММ.ГГГГ, например 01.10.2026.\n'
-                 'Этот день будет считаться первым.')
+                 'От этой даты я посчитаю текущий день и номер цикла. Дата регистрации в боте на расчёт не влияет.')
 
     async def handle(self, message: Message, now: datetime | None = None) -> None:
         profile = self.store.profile(message.chat.id)
@@ -102,6 +103,7 @@ class SetupFlow:
         first_day = 'сегодня' if active == now.date() else 'завтра'
         await telegram_call(message.answer,
             text=f'Готово! Буду напоминать каждый день в {at:%H:%M} по Москве 💊\n'
+                 f'Начало приёма: {datetime.fromisoformat(profile["pending_first_date"]):%d.%m.%Y}.\n'
                  f'{mode} {progress}\n'
                  f'Первое напоминание по новому расписанию — {first_day}. '
                  'Если напоминание за день уже отправлено, повторного не будет.\n'

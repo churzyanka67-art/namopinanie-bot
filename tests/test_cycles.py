@@ -96,3 +96,22 @@ class CycleTests(unittest.IsolatedAsyncioTestCase):
         await flow.handle(msg,NOW)
         self.assertIsNone(self.db.profile(100)['cycle_length'])
         self.assertEqual(self.db.profile(100)['reminder_time'],'19:30')
+
+    async def test_registering_in_second_cycle_uses_original_first_dose_date(self):
+        flow = SetupFlow(self.db, MSK, Mock())
+        msg = SimpleNamespace(chat=SimpleNamespace(id=100), from_user=SimpleNamespace(id=100),
+                              answer=AsyncMock(), text='')
+        await flow.start(msg)
+        for answer in ['01.10.2026', '18:45', 'Да, по циклам', '28']:
+            msg.text = answer
+            await flow.handle(msg, NOW)
+        # First dose October 1; registration November 10: total day 41,
+        # so day 13 of cycle 2, not day 1 of cycle 1.
+        self.assertIn('Сегодня 13-й день, цикл 2.', msg.answer.call_args.kwargs['text'])
+        await self.service.send_daily(NOW, force=True)
+        callback = SimpleNamespace(data='taken:1', from_user=SimpleNamespace(id=100),
+            message=SimpleNamespace(chat=SimpleNamespace(id=100), message_id=42), answer=AsyncMock())
+        with patch('pillbot.service.datetime', wraps=datetime) as clock:
+            clock.now.return_value = NOW
+            await self.service.confirm(callback)
+        self.assertIn('Сегодня 13-й день, цикл 2.', self.bot.send_message.call_args.kwargs['text'])
