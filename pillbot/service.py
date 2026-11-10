@@ -97,11 +97,17 @@ class ReminderService:
         if result == 'already':
             return
         day, number = self.store.intake_info(rid)
-        text = 'Ты умничка! ✨'  # Messages from the old version have no start date.
+        text = self.store.reminder_compliment(rid)
         if number is not None:
             today = datetime.now(self.timezone).date().isoformat()
             label = 'Сегодня' if day == today else f'За {datetime.fromisoformat(day):%d.%m.%Y} —'
-            text = f'{label} {number}-й день, ты умничка! ✨'
+            length = self.store.reminder_cycle(rid)
+            if length is None:
+                text = f'{label} {number}-й день, {text[0].lower()}{text[1:]}'
+            else:
+                cycle_day = (number - 1) % length + 1
+                cycle_number = (number - 1) // length + 1
+                text = f'{label} {cycle_day}-й день, цикл {cycle_number}. {text}'
         try:
             await telegram_call(self.bot.send_message, chat_id=chat_id, text=text)
         except TelegramAPIError as exc:

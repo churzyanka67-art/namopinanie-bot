@@ -1,9 +1,9 @@
-"""Two-step setup persisted in SQLite, including unfinished conversations."""
+"""Personal reminder setup persisted in SQLite, including unfinished conversations."""
 from datetime import datetime, time, timedelta
 import re
 from zoneinfo import ZoneInfo
 
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 from .service import telegram_call
 from .storage import Store
@@ -47,24 +47,62 @@ class SetupFlow:
                 text='Во сколько напоминать каждый день? ⏰\n'
                      'Напиши время по Москве в формате ЧЧ:ММ, например 22:59.')
             return
-        try:
-            if not re.fullmatch(r'\d{1,2}:\d{2}', text):
-                raise ValueError
-            hour, minute = map(int, text.split(':'))
-            at = time(hour, minute)
-        except ValueError:
+        if profile['setup_step'] == 'time':
+            try:
+                if not re.fullmatch(r'\d{1,2}:\d{2}', text):
+                    raise ValueError
+                hour, minute = map(int, text.split(':'))
+                at = time(hour, minute)
+            except ValueError:
+                await telegram_call(message.answer,
+                    text='Введи время от 00:00 до 23:59 в формате ЧЧ:ММ. Например: 09:30. '
+                         'Время московское.')
+                return
+            self.store.set_pending_time(message.chat.id, at.strftime('%H:%M'))
             await telegram_call(message.answer,
-                text='Введи время от 00:00 до 23:59 в формате ЧЧ:ММ. Например: 09:30. '
-                     'Время московское.')
+                text='Нужно считать дни по циклам? 💊\n'
+                     'Например, при цикле 28 дней после 28-го дня начнётся 1-й день цикла 2. '
+                     'Циклы идут подряд, без перерывов.',
+                reply_markup=ReplyKeyboardMarkup(keyboard=[[
+                    KeyboardButton(text='Да, по циклам'), KeyboardButton(text='Нет, без циклов')
+                ]], resize_keyboard=True, one_time_keyboard=True))
             return
+        if profile['setup_step'] == 'cycle_choice':
+            if text.casefold() in ('да', 'да, по циклам'):
+                self.store.request_cycle_length(message.chat.id)
+                await telegram_call(message.answer,
+                    text='Сколько дней в одном цикле? Напиши целое число, например 28.',
+                    reply_markup=ReplyKeyboardRemove())
+                return
+            if text.casefold() not in ('нет', 'нет, без циклов'):
+                await telegram_call(message.answer, text='Выбери «Да, по циклам» или «Нет, без циклов».')
+                return
+            length = None
+        elif profile['setup_step'] == 'cycle_length':
+            try:
+                if not text.isascii() or not text.isdecimal() or len(text) > 4:
+                    raise ValueError
+                length = int(text)
+                if not 1 <= length <= 3650:
+                    raise ValueError
+            except ValueError:
+                await telegram_call(message.answer, text='Напиши целое число дней от 1 до 3650, например 28.')
+                return
+        else:
+            return
+        at = time.fromisoformat(profile['pending_time'])
         active = now.date() + timedelta(days=int(now.time() >= at))
-        self.store.configure(message.chat.id, profile['pending_first_date'], at.strftime('%H:%M'), active.isoformat())
+        self.store.configure(message.chat.id, profile['pending_first_date'], at.strftime('%H:%M'),
+                             active.isoformat(), cycle_length=length)
         self.on_configured(message.chat.id)
         number = (now.date() - datetime.fromisoformat(profile['pending_first_date']).date()).days + 1
+        progress = (f'Сегодня {(number - 1) % length + 1}-й день, цикл {(number - 1) // length + 1}.'
+                    if length else f'Сегодня {number}-й день с первого приёма.')
+        mode = f'Цикл: {length} дн., без перерывов.' if length else 'Без циклов.'
         first_day = 'сегодня' if active == now.date() else 'завтра'
         await telegram_call(message.answer,
             text=f'Готово! Буду напоминать каждый день в {at:%H:%M} по Москве 💊\n'
-                 f'Сегодня {number}-й день с первого приёма.\n'
+                 f'{mode} {progress}\n'
                  f'Первое напоминание по новому расписанию — {first_day}. '
                  'Если напоминание за день уже отправлено, повторного не будет.\n'
-                 'Чтобы изменить дату или время, отправь /start.')
+                 'Чтобы изменить настройки, отправь /start.', reply_markup=ReplyKeyboardRemove())

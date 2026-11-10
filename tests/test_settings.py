@@ -88,6 +88,8 @@ class SetupTests(unittest.IsolatedAsyncioTestCase):
         self.flow = SetupFlow(Store(self.path), MSK, self.refresh)
         self.message.text = '18:45'
         await self.flow.handle(self.message, NOW)
+        self.message.text = 'Нет, без циклов'
+        await self.flow.handle(self.message, NOW)
         profile = self.store.profile(100)
         self.assertEqual(profile['first_date'], '2026-10-01')
         self.assertEqual(profile['reminder_time'], '18:45')
@@ -111,6 +113,8 @@ class SetupTests(unittest.IsolatedAsyncioTestCase):
         self.message.text = '25.10.2026'
         await self.flow.handle(self.message, NOW)
         self.message.text = '9:05'
+        await self.flow.handle(self.message, NOW)
+        self.message.text = 'Нет, без циклов'
         await self.flow.handle(self.message, NOW)
         self.assertEqual(self.store.profile(100)['active_from'], '2026-10-26')
         self.assertEqual(self.store.profile(100)['reminder_time'], '09:05')
@@ -217,7 +221,7 @@ class DispatcherFlowTests(unittest.IsolatedAsyncioTestCase):
                 service = ReminderService(bot, store, MSK)
                 schedule = ReminderScheduler(service)
                 dp = make_dispatcher(service, schedule)
-                for i, text in enumerate(['/start', '01.01.2020', '18:45'], start=1):
+                for i, text in enumerate(['/start', '01.01.2020', '18:45', 'Нет, без циклов'], start=1):
                     entities = [MessageEntity(type='bot_command', offset=0, length=6)] if i == 1 else None
                     message = Message(message_id=i, date=NOW, chat=Chat(id=100, type='private'),
                                       from_user=User(id=100, is_bot=False, first_name='Test'),
@@ -225,7 +229,8 @@ class DispatcherFlowTests(unittest.IsolatedAsyncioTestCase):
                     await dp.feed_update(bot, Update(update_id=i, message=message))
                 self.assertIn('Когда был первый приём', session.sent[0].text)
                 self.assertIn('Во сколько', session.sent[1].text)
-                self.assertIn('18:45 по Москве', session.sent[2].text)
+                self.assertIn('Нужно считать дни по циклам', session.sent[2].text)
+                self.assertIn('18:45 по Москве', session.sent[3].text)
                 self.assertEqual(store.profile(100)['first_date'], '2020-01-01')
                 self.assertEqual(store.profile(100)['reminder_time'], '18:45')
                 self.assertEqual(len(schedule.scheduler.get_jobs()), 1)
