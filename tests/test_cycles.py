@@ -76,6 +76,16 @@ class CycleTests(unittest.IsolatedAsyncioTestCase):
         flow = SetupFlow(Store(self.path), MSK, Mock())
         msg.text='28'
         await flow.handle(msg, NOW)
+        self.assertEqual(self.db.profile(100)['setup_step'], 'cycle_first_date')
+        self.assertIsNone(self.db.profile(100)['first_date'])
+        self.assertIn('Когда был первый день', msg.answer.call_args.kwargs['text'])
+        flow = SetupFlow(Store(self.path), MSK, Mock())
+        for answer in ['31.02.2026', '11.11.2026']:
+            msg.text = answer
+            await flow.handle(msg, NOW)
+            self.assertEqual(self.db.profile(100)['setup_step'], 'cycle_first_date')
+        msg.text = '01.11.2026'
+        await flow.handle(msg, NOW)
         profile = self.db.profile(100)
         self.assertEqual(int(profile['cycle_length']), 28)
         self.assertEqual(profile['first_date'], '2026-11-01')
@@ -102,7 +112,7 @@ class CycleTests(unittest.IsolatedAsyncioTestCase):
         msg = SimpleNamespace(chat=SimpleNamespace(id=100), from_user=SimpleNamespace(id=100),
                               answer=AsyncMock(), text='')
         await flow.start(msg)
-        for answer in ['01.10.2026', '18:45', 'Да, по циклам', '28']:
+        for answer in ['10.11.2026', '18:45', 'Да, по циклам', '28', '01.10.2026']:
             msg.text = answer
             await flow.handle(msg, NOW)
         # First dose October 1; registration November 10: total day 41,
@@ -115,3 +125,13 @@ class CycleTests(unittest.IsolatedAsyncioTestCase):
             clock.now.return_value = NOW
             await self.service.confirm(callback)
         self.assertIn('Сегодня 13-й день, цикл 2.', self.bot.send_message.call_args.kwargs['text'])
+
+    async def test_start_prompt_matches_original_dialogue(self):
+        flow = SetupFlow(self.db, MSK, Mock())
+        msg = SimpleNamespace(chat=SimpleNamespace(id=100), from_user=SimpleNamespace(id=100),
+                              answer=AsyncMock(), text='')
+        await flow.start(msg)
+        self.assertEqual(msg.answer.call_args.kwargs['text'],
+            'Когда был первый приём таблеток? 💊\n'
+            'Напиши дату в формате ДД.ММ.ГГГГ, например 01.10.2026.\n'
+            'Этот день будет считаться первым.')

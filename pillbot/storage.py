@@ -33,7 +33,7 @@ class Store:
             conn.execute('BEGIN IMMEDIATE')
             additions = {
                 'recipients': ('first_date', 'reminder_time', 'active_from',
-                               'setup_step', 'pending_first_date', 'pending_time', 'cycle_length'),
+                               'setup_step', 'pending_first_date', 'pending_time', 'cycle_length', 'pending_cycle_length'),
                 'reminders': ('first_date', 'cycle_length', 'compliment_index'),
             }
             for table, names in additions.items():
@@ -69,7 +69,7 @@ class Store:
 
     def begin_setup(self, chat_id: int) -> None:
         with closing(self.connect()) as conn, conn:
-            conn.execute("UPDATE recipients SET setup_step='date', pending_first_date=NULL, pending_time=NULL WHERE chat_id=?",
+            conn.execute("UPDATE recipients SET setup_step='date', pending_first_date=NULL, pending_time=NULL, pending_cycle_length=NULL WHERE chat_id=?",
                          (chat_id,))
 
     def set_pending_date(self, chat_id: int, first_date: str) -> None:
@@ -86,13 +86,18 @@ class Store:
         with closing(self.connect()) as conn, conn:
             conn.execute("UPDATE recipients SET setup_step='cycle_length' WHERE chat_id=?", (chat_id,))
 
+    def request_cycle_first_date(self, chat_id: int, length: int) -> None:
+        with closing(self.connect()) as conn, conn:
+            conn.execute("UPDATE recipients SET pending_cycle_length=?, setup_step='cycle_first_date' WHERE chat_id=?",
+                         (length, chat_id))
+
     def configure(self, chat_id: int, first_date: str, reminder_time: str, active_from: str,
                   cycle_length: int | None = None) -> None:
         if cycle_length is not None and (type(cycle_length) is not int or not 1 <= cycle_length <= 3650):
             raise ValueError('Cycle length must be an integer from 1 to 3650')
         with closing(self.connect()) as conn, conn:
             conn.execute('UPDATE recipients SET first_date=?, reminder_time=?, active_from=?, '
-                         'cycle_length=?, setup_step=NULL, pending_first_date=NULL, pending_time=NULL WHERE chat_id=?',
+                         'cycle_length=?, setup_step=NULL, pending_first_date=NULL, pending_time=NULL, pending_cycle_length=NULL WHERE chat_id=?',
                          (first_date, reminder_time, active_from, cycle_length, chat_id))
 
     def intake_info(self, reminder_id: int) -> tuple[str, int | None]:
